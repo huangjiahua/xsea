@@ -1,12 +1,12 @@
 #include "../include/xsea.h"
 
-Xsea::Document::Document(): _root(ElementPtr(new Element(nullptr, 0, ""))) { }
+Xsea::Document::Document() : _root(ElementPtr(new Element(nullptr, 0, ""))) {}
 
-Xsea::Document::Document(const char *docName):
-        _root(ElementPtr(new Element(nullptr, 0, ""))), _filename(docName) { }
+Xsea::Document::Document(const char *docName) :
+        _root(ElementPtr(new Element(nullptr, 0, ""))), _filename(docName) {}
 
-Xsea::Document::Document(const std::string &docName):
-        _root(ElementPtr(new Element(nullptr, 0, ""))), _filename(docName) { }
+Xsea::Document::Document(const std::string &docName) :
+        _root(ElementPtr(new Element(nullptr, 0, ""))), _filename(docName) {}
 
 bool Xsea::Document::loadFile() {
     std::ifstream is(_filename);
@@ -40,8 +40,18 @@ void Xsea::Document::saveFile(const char *fileName) const {
 
 void Xsea::Document::saveFile(const std::string &fileName) const {
     std::ofstream os(fileName);
-    os << '<' << _declarationPtr->getValue() << ">\n" << std::endl;
-    // TODO
+    if (_declarationPtr != nullptr)
+        os << "<" << _declarationPtr->_value << ">" << std::endl;
+    for (const NodePtr &ptr : _root->_children) {
+        if (ptr->getType() == NodeType::_comment)
+            os << "<!--" << ptr->getValue() << "-->" << std::endl;
+        else if (ptr->getType() == NodeType::_unknown)
+            os << "<" << ptr->getValue() << ">" << std::endl;
+        else if (ptr->getType() == NodeType::_element) {
+            ElementPtr elemPtr = std::dynamic_pointer_cast<Element>(ptr);
+            save(os, elemPtr);
+        }
+    }
 }
 
 Xsea::ElementPtr Xsea::Document::getRootPtr() const {
@@ -105,7 +115,7 @@ bool Xsea::Document::construct(std::istream &is) {
             case NodeType::_element: {
                 curr->_children.emplace_back(
                         new Element(curr, curr->_children.size(),
-                                                  tagName(line)));
+                                    tagName(line)));
                 if (line.back() != '/') // not like <tag/>
                     curr = std::dynamic_pointer_cast<Element>(curr->_children.back());
                 break;
@@ -142,16 +152,17 @@ bool Xsea::Document::construct(std::istream &is) {
                 }
                 curr->_children.emplace_back(
                         new Comment(curr, curr->_children.size(),
-                                                  parseComment(line, start)));
+                                    parseComment(line, start)));
                 break;
             }
             case NodeType::_unknown: {
                 curr->_children.emplace_back(
                         new Unknown(curr, curr->_children.size(),
-                                                  line.substr(start + 1)));
+                                    line.substr(start + 1)));
                 break;
             }
-            default: break;
+            default:
+                break;
         }
     } while (std::getline(is, line, '>'));
 
@@ -168,8 +179,7 @@ std::size_t Xsea::Document::startLine(const std::string &line) {
 }
 
 
-
-Xsea::NodeType Xsea::Document::judgeType(const std::string& line, std::size_t start) {
+Xsea::NodeType Xsea::Document::judgeType(const std::string &line, std::size_t start) {
     if (line[start] != '<')
         return NodeType::_text;
     else if (line[start + 1] == '/')
@@ -194,7 +204,7 @@ std::string Xsea::Document::tagName(const std::string &line, std::size_t start) 
 }
 
 std::string Xsea::Document::parseComment(const std::string &line, std::size_t start) {
-    return line.substr(start, line.size() - 4 - 3 - start);
+    return line.substr(start + 4, line.size() - 4 - 3 - start);
 }
 
 std::string Xsea::Document::parseText(const std::string &line) {
@@ -255,6 +265,60 @@ const Xsea::Declaration &Xsea::Document::getDeclaration() const {
 
 Xsea::Declaration &Xsea::Document::getDeclaration() {
     return *_declarationPtr;
+}
+
+void Xsea::Document::save(std::ostream &os, Xsea::ElementPtr ptr, int indent) {
+    if (ptr->_children.empty())
+        os << std::string(static_cast<unsigned long>(indent) * 2, ' ')
+           << "<" << ptr->_value << "/>" << std::endl;
+    else if (ptr->_children.size() == 1 && ptr->_children.front()->getType() != NodeType::_element) {
+        NonelementPtr nptr = std::dynamic_pointer_cast<Nonelement>(ptr->_children.front());
+        os << std::string(static_cast<unsigned long>(indent * 2), ' ')
+           << "<" << ptr->_value << ">";
+        if (nptr->_value.size() < 40) {
+            save(os, nptr);
+            os << "</" << ptr->_value << ">";
+        } else {
+            os << '\n' << std::string(static_cast<unsigned long>(indent * 2 + 2), ' ');
+            save(os, nptr);
+            os << '\n' << std::string(static_cast<unsigned long>(indent * 2), ' ')
+               << "</" << ptr->_value << ">";
+        }
+        os << std::endl;
+    } else {
+        os << std::string(static_cast<unsigned long>(indent * 2), ' ')
+           << "<" << ptr->_value << ">" << std::endl;
+        for (const NodePtr &np : ptr->_children) {
+            if (np->_type == NodeType::_element)
+                save(os, std::dynamic_pointer_cast<Element>(np), indent + 1);
+            else {
+                os << std::string(static_cast<unsigned long>(indent * 2 + 2), ' ');
+                save(os, std::dynamic_pointer_cast<Nonelement>(np));
+                os << std::endl;
+            }
+        }
+        os << std::string(static_cast<unsigned long>(indent * 2), ' ')
+           << "</" << ptr->_value << ">" << std::endl;
+    }
+}
+
+void Xsea::Document::save(std::ostream &os, Xsea::NonelementPtr ptr) {
+    switch (ptr->getType()) {
+        case NodeType::_text: {
+            os << ptr->getValue();
+            return;
+        }
+        case NodeType::_comment: {
+            os << "<!--" << ptr->getValue() << "-->";
+            return;
+        }
+        case NodeType::_unknown: {
+            os << "<" << ptr->getValue() << ">";
+            return;
+        }
+        default:
+            return;
+    }
 }
 
 

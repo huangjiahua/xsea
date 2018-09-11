@@ -1,5 +1,5 @@
 #include <iostream>
-#include "include/xsea.h"
+#include "../include/xsea.h"
 using namespace std;
 using namespace Xsea;
 
@@ -23,13 +23,19 @@ void display(const Xsea::Node &node, std::ostream& os,
     else os << std::endl;
 }
 
-int main() {
-    Document doc("test.xml");
+int main(int argc, const char** argv) {
+    std::string filename;
+    if (argc <= 1)
+        filename = "test.xml";
+    else
+        filename = argv[1];
+    Document doc(filename);
     doc.loadFile();
     ElementPtr ptr = doc.getRootPtr();
     dynamic_pointer_cast<Element>(ptr->insert(0, NodeType::_element, "newTag"));
     ptr = dynamic_pointer_cast<Element>(ptr->insert(1, NodeType::_element, "tag"));
     ptr->add(NodeType::_text, "add a new tag");
     display(doc.getRoot(), cout);
+    doc.saveFile("new.xml");
     return 0;
 }
